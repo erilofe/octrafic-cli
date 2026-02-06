@@ -11,4 +11,3 @@ AI-powered CLI tool for API testing and exploration.
 - Auto-conversion of API formats to OpenAPI
 - Multi-platform support: Linux, macOS, Windows (amd64, arm64, armv7)
 - Package managers: Homebrew, DEB, RPM, AUR
-- Branded install scripts (install.sh, install.ps1)
