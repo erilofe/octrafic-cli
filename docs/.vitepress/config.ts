@@ -35,6 +35,12 @@ export default defineConfig({
           { text: 'Project Management', link: '/guides/project-management' },
           { text: 'Authentication', link: '/guides/authentication' }
         ]
+      },
+      {
+        text: 'Release Notes',
+        items: [
+          { text: 'v0.1.0', link: '/releases/v0.1.0' }
+        ]
       }
     ],
 
