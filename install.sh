@@ -80,7 +80,7 @@ detect_arch() {
 
 get_latest_version() {
     echo "Fetching latest version..."
-    VERSION=$(curl -fsSL "https://api.github.com/repos/$REPO/releases/latest" | grep '"tag_name"' | sed -E 's/.*"v([^"]+)".*/\1/')
+    VERSION=$(curl -fsSL "https://api.github.com/repos/$REPO/releases/latest" | grep '"tag_name"' | sed -E 's/.*"v([^"]+)".*/\1/' | tr -d '[:space:]')
 
     if [ -z "$VERSION" ]; then
         echo -e "${RED}Error: Could not determine latest version${NC}"
@@ -112,6 +112,7 @@ install_linux_package() {
             TEMP_DEB="/tmp/${BINARY_NAME}.deb"
 
             echo "Downloading .deb package..."
+            echo "URL: $PACKAGE_URL"
             curl -fsSL "$PACKAGE_URL" -o "$TEMP_DEB"
 
             echo "Installing (requires sudo)..."
@@ -125,6 +126,7 @@ install_linux_package() {
             TEMP_RPM="/tmp/${BINARY_NAME}.rpm"
 
             echo "Downloading .rpm package..."
+            echo "URL: $PACKAGE_URL"
             curl -fsSL "$PACKAGE_URL" -o "$TEMP_RPM"
 
             echo "Installing (requires sudo)..."
