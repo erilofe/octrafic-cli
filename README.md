@@ -7,7 +7,7 @@ AI-powered CLI tool for API testing and exploration. Chat naturally with your AP
 - **Natural language testing** - Describe what you want to test, AI generates the right requests
 - **Intelligent exploration** - Ask questions about endpoints, parameters, and responses
 - **Automated test generation** - Comprehensive test suites based on your API specs
-- **Multiple AI providers** - Claude (Anthropic), OpenRouter with model selection
+- **Multiple AI providers** - Claude (Anthropic), OpenRouter, OpenAI with model selection
 - **Flexible authentication** - Bearer tokens, API keys, Basic auth with secure credential handling
 - **Format support** - OpenAPI/Swagger (JSON/YAML), Postman Collections, GraphQL, Markdown
 
@@ -44,6 +44,7 @@ On first launch, configure your AI provider:
 **Supported providers:**
 - **Claude (Anthropic)** - Sonnet 4.5, Opus 4.6, Haiku 4.5 - Get API key: [console.anthropic.com](https://console.anthropic.com)
 - **OpenRouter** - Claude, GPT-5.2, Gemini, and more - Get API key: [openrouter.ai/keys](https://openrouter.ai/keys)
+- **OpenAI** - GPT-5.2, GPT-4, GPT-4 Turbo - Get API key: [platform.openai.com](https://platform.openai.com)
 
 Configuration is saved in `~/.octrafic/config.json`
 
