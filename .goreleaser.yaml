@@ -1,0 +1,207 @@
+# yaml-language-server: $schema=https://goreleaser.com/static/schema.json
+# vim: set ts=2 sw=2 tw=0 fo=cnqoj
+
+version: 2
+
+project_name: octrafic
+
+metadata:
+  mod_timestamp: "{{ .CommitTimestamp }}"
+
+# Project metadata
+release:
+  github:
+    owner: Octrafic
+    name: octrafic-cli
+  name_template: "v{{ .Version }}"
+  prerelease: auto
+  extra_files:
+    - glob: ./install.sh
+    - glob: ./install.ps1
+
+before:
+  hooks:
+    # You may remove this if you don't use go modules.
+    - go mod tidy
+    # you may remove this if you don't need go generate
+    - go generate ./...
+
+builds:
+  - id: octrafic
+    binary: octrafic
+    main: ./cmd/octrafic
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - windows
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+      - arm
+    goarm:
+      - 7
+    ignore:
+      - goos: windows
+        goarch: arm64
+      - goos: windows
+        goarch: arm
+      - goos: darwin
+        goarch: arm
+    ldflags:
+      - -s -w
+      - -X main.version={{ .Version }}
+      - -X main.commit={{ .Commit }}
+      - -X main.date={{ .CommitDate }}
+
+archives:
+  - id: octrafic
+    formats: [tar.gz]
+    # this name template makes the OS and Arch compatible with the results of `uname`.
+    name_template: >-
+      {{ .ProjectName }}_
+      {{- title .Os }}_
+      {{- if eq .Arch "amd64" }}x86_64
+      {{- else if eq .Arch "386" }}i386
+      {{- else }}{{ .Arch }}{{ end }}
+      {{- if .Arm }}v{{ .Arm }}{{ end }}
+    # use zip for windows archives
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    # Include additional files
+    files:
+      - LICENSE
+      - README.md
+      - CONTRIBUTING.md
+      - INSTALL.md
+
+checksum:
+  name_template: "checksums.txt"
+  algorithm: sha256
+
+changelog:
+  use: github
+  sort: asc
+  abbrev: 0
+  groups:
+    - title: "Features"
+      regexp: '^.*?feat(\([[:word:]]+\))??!?:.+$'
+      order: 0
+    - title: "Bug Fixes"
+      regexp: '^.*?fix(\([[:word:]]+\))??!?:.+$'
+      order: 1
+    - title: "Performance Improvements"
+      regexp: '^.*?perf(\([[:word:]]+\))??!?:.+$'
+      order: 2
+    - title: "Documentation"
+      regexp: '^.*?docs(\([[:word:]]+\))??!?:.+$'
+      order: 3
+    - title: "Other Changes"
+      order: 999
+  filters:
+    exclude:
+      - "^test:"
+      - "^chore:"
+      - "typo"
+
+# Linux packages (DEB and RPM)
+nfpms:
+  - id: octrafic
+    package_name: octrafic
+    file_name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}{{ if .Arm }}v{{ .Arm }}{{ end }}"
+
+    # Maintainer info
+    maintainer: "Mikołaj Badyl <contact@octrafic.com>"
+    description: "Test APIs naturally with AI - OpenAPI specs, natural language, intelligent responses"
+    homepage: "https://octrafic.com"
+    license: "MIT"
+
+    # Formats to generate
+    formats:
+      - deb
+      - rpm
+
+    # Dependencies (if any)
+    # dependencies:
+    #   - git
+
+    # Recommended packages
+    # recommends:
+    #   - curl
+
+    # Binary mapping
+    bindir: /usr/bin
+
+    # Additional files
+    contents:
+      - src: LICENSE
+        dst: /usr/share/doc/octrafic/LICENSE
+      - src: README.md
+        dst: /usr/share/doc/octrafic/README.md
+      - src: INSTALL.md
+        dst: /usr/share/doc/octrafic/INSTALL.md
+
+    # DEB specific
+    deb:
+      lintian_overrides:
+        - statically-linked-binary
+        - changelog-file-missing-in-native-package
+
+# Arch User Repository (AUR)
+aurs:
+  - name: octrafic-bin
+    homepage: "https://octrafic.com"
+    description: "Test APIs naturally with AI - OpenAPI specs, natural language, intelligent responses"
+    maintainers:
+      - "Mikołaj Badyl <contact@octrafic.com>"
+    license: "MIT"
+    private_key: "{{ .Env.AUR_KEY }}"
+    git_url: "ssh://aur@aur.archlinux.org/octrafic-bin.git"
+
+    # Package details
+    package: |-
+      # bin
+      install -Dm755 "./octrafic" "${pkgdir}/usr/bin/octrafic"
+
+      # license
+      install -Dm644 "./LICENSE" "${pkgdir}/usr/share/licenses/octrafic/LICENSE"
+
+      # docs
+      install -Dm644 "./README.md" "${pkgdir}/usr/share/doc/octrafic/README.md"
+
+    # Commit details
+    commit_author:
+      name: "Mikołaj Badyl"
+      email: "contact@octrafic.com"
+    commit_msg_template: "Update to {{ .Tag }}"
+
+brews:
+  - name: octrafic
+    repository:
+      owner: Octrafic
+      name: homebrew-tap
+      token: "{{ .Env.GITHUB_TOKEN }}"
+
+    # Commit message
+    commit_author:
+      name: goreleaserbot
+      email: bot@goreleaser.com
+    commit_msg_template: "Brew formula update for {{ .ProjectName }} version {{ .Tag }}"
+
+    # Description and metadata
+    description: "Test APIs naturally with AI - OpenAPI specs, natural language, intelligent responses"
+    homepage: "https://octrafic.com"
+    license: "MIT"
+
+    # Install configuration
+    install: |
+      bin.install "octrafic"
+
+    # Test command
+    test: |
+      system "#{bin}/octrafic", "--help"
+
+announce:
+  skip: "true"

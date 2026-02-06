@@ -1,0 +1,51 @@
+# Binaries (executables, not source)
+/octrafic
+*.exe
+*.dll
+*.so
+*.dylib
+
+# GoReleaser
+dist/
+
+# Test binary, built with `go test -c`
+*.test
+
+# Output of the go coverage tool
+*.out
+
+# Go workspace file
+go.work
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+api-tester-backend
+
+# Environment variables
+.env
+.env.local
+
+# Backend is in separate git repo
+backend/
+
+# Spec files
+spec_files/
+
+# Testing API
+testing-api/
+
+# Logs
+logs/
+
+# Docs (VitePress)
+docs/.vitepress/cache/
+docs/.vitepress/dist/
+docs/node_modules/
