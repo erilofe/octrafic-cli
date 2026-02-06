@@ -3,11 +3,10 @@
 
 version: 2
 
-# Skip AUR and Homebrew until repos are configured
+# Skip AUR until manual setup is complete
 skip:
   publish:
     - aur
-    - homebrew
 
 project_name: octrafic
 
