@@ -33,7 +33,8 @@ export default defineConfig({
         text: 'Guides',
         items: [
           { text: 'Project Management', link: '/guides/project-management' },
-          { text: 'Authentication', link: '/guides/authentication' }
+          { text: 'Authentication', link: '/guides/authentication' },
+          { text: 'PDF Reports', link: '/guides/reports' }
         ]
       },
       {
