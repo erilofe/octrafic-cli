@@ -117,6 +117,6 @@ rm -r "$env:LOCALAPPDATA\Programs\Octrafic"
 
 ## Support
 
-- Documentation: https://octrafic.com
+- Documentation: https://docs.octrafic.com
 - Issues: https://github.com/Octrafic/octrafic-cli/issues
 - Email: contact@octrafic.com
