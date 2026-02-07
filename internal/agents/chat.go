@@ -132,6 +132,25 @@ func getMainAgentTools() []common.Tool {
 				"required": []string{"tests"},
 			},
 		},
+		{
+			Name:        "GenerateReport",
+			Description: "Generate a PDF report from test results. Call this AFTER tests have been executed to create a professional report. Write the report content in Markdown format — it will be converted to a styled PDF. Include: title, summary, test results table (method, endpoint, status, duration), and analysis.",
+			InputSchema: map[string]any{
+				"type":                 "object",
+				"additionalProperties": false,
+				"properties": map[string]any{
+					"report_content": map[string]any{
+						"type":        "string",
+						"description": "Full report content in Markdown format. Use headers, tables, lists, and code blocks for a professional layout. Include: report title, test summary (total/passed/failed), detailed results table, and analysis/recommendations.",
+					},
+					"file_name": map[string]any{
+						"type":        "string",
+						"description": "Optional output file name for the PDF (e.g., 'api-test-report.pdf'). If not provided, a timestamped name will be used.",
+					},
+				},
+				"required": []string{"report_content"},
+			},
+		},
 	}
 }
 
@@ -175,6 +194,10 @@ Generate tests. Parameters:
 
 ## ExecuteTestGroup
 Run tests after GenerateTestPlan.
+
+## GenerateReport
+Generate a PDF report from test results. Use AFTER tests are executed and user asks for a report.
+Write a complete Markdown report with: title, summary, results table, analysis.
 
 # Behavior
 - User says "users" → fetch details, show info OR generate tests

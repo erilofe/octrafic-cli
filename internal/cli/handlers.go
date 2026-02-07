@@ -3,6 +3,7 @@ package cli
 import (
 	"github.com/Octrafic/octrafic-cli/internal/agents"
 	"github.com/Octrafic/octrafic-cli/internal/core/parser"
+	"github.com/Octrafic/octrafic-cli/internal/core/reporter"
 	"github.com/Octrafic/octrafic-cli/internal/infra/logger"
 	"github.com/Octrafic/octrafic-cli/internal/infra/storage"
 	"encoding/json"
@@ -238,6 +239,39 @@ func (m *TestUIModel) executeTool(toolCall agent.ToolCall) tea.Cmd {
 			}
 		}
 
+		if toolCall.Name == "GenerateReport" {
+			reportContent, _ := toolCall.Arguments["report_content"].(string)
+			if reportContent == "" {
+				return toolResultMsg{
+					toolID:   toolCall.ID,
+					toolName: toolCall.Name,
+					err:      fmt.Errorf("missing required parameter: report_content"),
+				}
+			}
+
+			fileName, _ := toolCall.Arguments["file_name"].(string)
+
+			pdfPath, err := reporter.GeneratePDF(reportContent, fileName)
+			if err != nil {
+				return toolResultMsg{
+					toolID:   toolCall.ID,
+					toolName: toolCall.Name,
+					result:   nil,
+					err:      err,
+				}
+			}
+
+			return toolResultMsg{
+				toolID:   toolCall.ID,
+				toolName: toolCall.Name,
+				result: map[string]any{
+					"status":    "success",
+					"file_path": pdfPath,
+				},
+				err: nil,
+			}
+		}
+
 		if toolCall.Name == "ExecuteTestGroup" {
 			testsArg, ok := toolCall.Arguments["tests"]
 			if !ok {
@@ -424,6 +458,30 @@ func (m *TestUIModel) handleToolResult(toolName string, toolID string, result an
 			return m.sendChatMessage("")
 		}
 		return nil // No tool_use, so don't send response back
+	}
+
+	if toolName == "GenerateReport" {
+		if resultMap, ok := result.(map[string]any); ok {
+			filePath, _ := resultMap["file_path"].(string)
+
+			m.addMessage("")
+			m.addMessage(m.successStyle.Render("✓ Report generated"))
+			m.addMessage(m.subtleStyle.Render("   " + filePath))
+
+			if toolID != "" {
+				m.conversationHistory = append(m.conversationHistory, agent.ChatMessage{
+					Role: "user",
+					FunctionResponse: &agent.FunctionResponseData{
+						ID:       toolID,
+						Name:     "GenerateReport",
+						Response: resultMap,
+					},
+				})
+
+				return m.sendChatMessage("")
+			}
+			return nil
+		}
 	}
 
 	if toolName == "GenerateTestPlan" {

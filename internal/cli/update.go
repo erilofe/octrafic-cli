@@ -928,6 +928,21 @@ func handleProcessToolCalls(m *TestUIModel, _ processToolCallsMsg) (tea.Model, t
 			}
 		}
 
+		for _, toolCall := range m.streamedToolCalls {
+			if toolCall.Name == "GenerateReport" {
+				m.streamedToolCalls = nil
+
+				m.currentTestToolID = toolCall.ID
+				m.currentTestToolName = "GenerateReport"
+
+				showToolWidget(m, "Generating PDF report", "")
+				m.agentState = StateUsingTool
+				m.animationFrame = 0
+				m.spinner.Style = lipgloss.NewStyle().Foreground(Theme.Primary)
+				return m, tea.Batch(animationTick(), m.executeTool(toolCall))
+			}
+		}
+
 		m.agentState = StateIdle
 	}
 

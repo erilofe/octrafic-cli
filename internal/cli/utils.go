@@ -89,6 +89,7 @@ func (m *TestUIModel) shouldAskForConfirmation(toolName string) bool {
 	safeTools := map[string]bool{
 		"GenerateTestPlan": true, // Planning is safe, doesn't execute anything
 		"ExecuteTestGroup": true, // Plan was already approved via checkboxes
+		"GenerateReport":   true, // Generating a report is safe
 	}
 
 	return !safeTools[toolName]
