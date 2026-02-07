@@ -2,7 +2,7 @@
 
 AI-powered CLI tool for API testing and exploration. Chat naturally with your APIs - no scripts, no configuration files, just conversation.
 
-![Demo](./demo/demo.mp4)
+![Demo](./demo/demo.gif)
 
 ## Features
 
