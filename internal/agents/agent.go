@@ -70,7 +70,7 @@ type ProcessSpecResult struct {
 func NewAgent(baseURL string) (*Agent, error) {
 	// Try loading config from file first (onboarding users)
 	cfg, err := config.Load()
-	if err == nil && cfg.Onboarded && cfg.APIKey != "" {
+	if err == nil && cfg.Onboarded && (cfg.APIKey != "" || config.IsLocalProvider(cfg.Provider)) {
 		// Use config from file
 		logger.Info("Using LLM config from onboarding",
 			logger.String("provider", cfg.Provider),
@@ -79,6 +79,7 @@ func NewAgent(baseURL string) (*Agent, error) {
 		providerConfig := common.ProviderConfig{
 			Provider: cfg.Provider,
 			APIKey:   cfg.APIKey,
+			BaseURL:  cfg.BaseURL,
 			Model:    cfg.Model,
 		}
 
@@ -112,6 +113,7 @@ func NewAgent(baseURL string) (*Agent, error) {
 	providerConfig := common.ProviderConfig{
 		Provider: provider,
 		APIKey:   apiKey,
+		BaseURL:  config.GetEnv("BASE_URL"),
 		Model:    config.GetEnv("MODEL"),
 	}
 

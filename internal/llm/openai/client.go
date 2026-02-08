@@ -11,8 +11,119 @@ import (
 	"os"
 	"strings"
 
+	"regexp"
+
 	"github.com/tidwall/gjson"
 )
+
+// thinkTagFilter separates <think>...</think> content from regular content in streaming responses.
+// Local models (Ollama/llama.cpp) embed reasoning inside <think> tags in the content field
+// instead of using a dedicated reasoning field.
+type thinkTagFilter struct {
+	insideThink bool
+	buffer      string
+	callback    StreamCallback
+}
+
+func newThinkTagFilter(callback StreamCallback) *thinkTagFilter {
+	return &thinkTagFilter{callback: callback}
+}
+
+func (f *thinkTagFilter) Process(chunk string) {
+	f.buffer += chunk
+
+	for {
+		if f.insideThink {
+			idx := strings.Index(f.buffer, "</think>")
+			if idx == -1 {
+				// Check for partial closing tag at the end
+				for i := 1; i < len("</think>") && i <= len(f.buffer); i++ {
+					if strings.HasSuffix(f.buffer, "</think>"[:i]) {
+						// Flush safe part as reasoning
+						safe := f.buffer[:len(f.buffer)-i]
+						if safe != "" {
+							f.callback(safe, true)
+						}
+						f.buffer = f.buffer[len(f.buffer)-i:]
+						return
+					}
+				}
+				// No partial tag, flush all as reasoning
+				if f.buffer != "" {
+					f.callback(f.buffer, true)
+					f.buffer = ""
+				}
+				return
+			}
+			// Send everything before </think> as reasoning
+			if idx > 0 {
+				f.callback(f.buffer[:idx], true)
+			}
+			f.buffer = f.buffer[idx+len("</think>"):]
+			f.insideThink = false
+		} else {
+			idx := strings.Index(f.buffer, "<think>")
+			if idx == -1 {
+				// Check for partial opening tag at the end
+				for i := 1; i < len("<think>") && i <= len(f.buffer); i++ {
+					if strings.HasSuffix(f.buffer, "<think>"[:i]) {
+						safe := f.buffer[:len(f.buffer)-i]
+						if safe != "" {
+							f.callback(safe, false)
+						}
+						f.buffer = f.buffer[len(f.buffer)-i:]
+						return
+					}
+				}
+				// No partial tag, flush all as content
+				if f.buffer != "" {
+					f.callback(f.buffer, false)
+					f.buffer = ""
+				}
+				return
+			}
+			// Send everything before <think> as content
+			if idx > 0 {
+				f.callback(f.buffer[:idx], false)
+			}
+			f.buffer = f.buffer[idx+len("<think>"):]
+			f.insideThink = true
+		}
+	}
+}
+
+func (f *thinkTagFilter) Flush() {
+	if f.buffer != "" {
+		if f.insideThink {
+			f.callback(f.buffer, true)
+		} else {
+			f.callback(f.buffer, false)
+		}
+		f.buffer = ""
+	}
+}
+
+var thinkTagRegex = regexp.MustCompile(`(?s)<think>.*?</think>\s*`)
+
+// stripThinkTags removes <think>...</think> blocks from non-streaming responses
+func stripThinkTags(content string) (cleaned string, reasoning string) {
+	var reasoningParts []string
+	matches := thinkTagRegex.FindAllStringSubmatchIndex(content, -1)
+	if len(matches) == 0 {
+		return content, ""
+	}
+	last := 0
+	var cleanedParts []string
+	for _, match := range matches {
+		cleanedParts = append(cleanedParts, content[last:match[0]])
+		thinkContent := content[match[0]+len("<think>") : match[1]-len("</think>")]
+		thinkContent = strings.TrimSuffix(thinkContent, "\n")
+		reasoningParts = append(reasoningParts, strings.TrimSpace(thinkContent))
+		last = match[1]
+	}
+	cleanedParts = append(cleanedParts, content[last:])
+	return strings.TrimSpace(strings.Join(cleanedParts, "")), strings.Join(reasoningParts, "\n")
+}
 
 // Message represents a chat message
 type Message struct {
@@ -91,8 +202,8 @@ func NewClient() (*Client, error) {
 
 // NewClientWithConfig creates a new client with explicit configuration
 func NewClientWithConfig(apiKey, model, baseURL string) (*Client, error) {
-	if apiKey == "" || model == "" {
-		return nil, fmt.Errorf("API key and model are required")
+	if model == "" {
+		return nil, fmt.Errorf("model is required")
 	}
 
 	if baseURL == "" {
@@ -144,6 +255,17 @@ func (c *Client) chatStream(messages []Message, tools []Tool, thinkingEnabled bo
 	var toolCalls []FunctionCallData
 	var usage *TokenUsage
 
+	// Filter that separates <think>...</think> tags from content (for Ollama/llama.cpp)
+	filter := newThinkTagFilter(func(chunk string, isThought bool) {
+		if isThought {
+			accumulatedReasoning += chunk
+			callback(chunk, true)
+		} else {
+			accumulatedContent += chunk
+			callback(chunk, false)
+		}
+	})
+
 	type pendingToolCall struct {
 		id   string
 		name string
@@ -165,7 +287,7 @@ func (c *Client) chatStream(messages []Message, tools []Tool, thinkingEnabled bo
 		if data == "[DONE]" { break }
 
 		res := gjson.Parse(data)
-		
+
 		reasoning := ""
 		if r := res.Get("choices.0.delta.reasoning_content"); r.Exists() {
 			reasoning = r.String()
@@ -182,8 +304,7 @@ func (c *Client) chatStream(messages []Message, tools []Tool, thinkingEnabled bo
 
 		content := res.Get("choices.0.delta.content").String()
 		if content != "" {
-			accumulatedContent += content
-			callback(content, false)
+			filter.Process(content)
 		}
 
 		tcs := res.Get("choices.0.delta.tool_calls").Array()
@@ -207,6 +328,8 @@ func (c *Client) chatStream(messages []Message, tools []Tool, thinkingEnabled bo
 			}
 		}
 	}
+
+	filter.Flush()
 
 	for _, pt := range pendingTools {
 		var args map[string]interface{}
@@ -244,9 +367,20 @@ func (c *Client) chat(messages []Message, tools []Tool) (*ChatResponse, *TokenUs
 
 	res := gjson.ParseBytes(body)
 	msg := res.Get("choices.0.message")
-	
+
 	reasoning := msg.Get("reasoning_content").String()
 	if reasoning == "" { reasoning = msg.Get("reasoning").String() }
+
+	content := msg.Get("content").String()
+
+	// Strip <think>...</think> tags from content (Ollama/llama.cpp embed reasoning inline)
+	if strings.Contains(content, "<think>") {
+		cleaned, inlineReasoning := stripThinkTags(content)
+		content = cleaned
+		if reasoning == "" {
+			reasoning = inlineReasoning
+		}
+	}
 
 	var toolCalls []FunctionCallData
 	for _, tc := range msg.Get("tool_calls").Array() {
@@ -256,12 +390,14 @@ func (c *Client) chat(messages []Message, tools []Tool) (*ChatResponse, *TokenUs
 	}
 
 	usage := &TokenUsage{InputTokens: res.Get("usage.prompt_tokens").Int(), OutputTokens: res.Get("usage.completion_tokens").Int()}
-	return &ChatResponse{Message: msg.Get("content").String(), Reasoning: reasoning, ToolCalls: toolCalls}, usage, nil
+	return &ChatResponse{Message: content, Reasoning: reasoning, ToolCalls: toolCalls}, usage, nil
 }
 
 func (c *Client) setHeaders(req *http.Request) {
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+c.apiKey)
+	if c.apiKey != "" {
+		req.Header.Set("Authorization", "Bearer "+c.apiKey)
+	}
 	if strings.Contains(c.baseURL, "openrouter.ai") {
 		req.Header.Set("HTTP-Referer", "https://octrafic.com")
 		req.Header.Set("X-Title", "Octrafic")

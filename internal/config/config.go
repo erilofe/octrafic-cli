@@ -10,9 +10,15 @@ import (
 // Config holds the application configuration
 type Config struct {
 	Provider  string `json:"provider"`
-	APIKey    string `json:"api_key"`
+	APIKey    string `json:"api_key,omitempty"`
+	BaseURL   string `json:"base_url,omitempty"`
 	Model     string `json:"model"`
 	Onboarded bool   `json:"onboarded"`
+}
+
+// IsLocalProvider returns true for providers that don't require an API key
+func IsLocalProvider(provider string) bool {
+	return provider == "ollama" || provider == "llamacpp"
 }
 
 // configDir returns the platform-specific config directory

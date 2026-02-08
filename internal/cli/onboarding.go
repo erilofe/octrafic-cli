@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/Octrafic/octrafic-cli/internal/config"
 
@@ -24,6 +25,7 @@ const (
 	OnboardingWelcome OnboardingState = iota
 	OnboardingProvider
 	OnboardingAPIKey
+	OnboardingServerURL
 	OnboardingSelectModel
 	OnboardingComplete
 )
@@ -32,9 +34,11 @@ const (
 type OnboardingModel struct {
 	state            OnboardingState
 	provider         string
-	selectedProvider int // 0 = anthropic, 1 = openrouter
+	selectedProvider int // 0 = anthropic, 1 = openrouter, 2 = openai, 3 = ollama, 4 = llamacpp
 	apiKey           string
 	apiKeyInput      textinput.Model
+	serverURL        string
+	serverURLInput   textinput.Model
 	models           []string
 	filteredModels   []string // Filtered list based on search
 	selectedModel    int
@@ -69,6 +73,12 @@ func NewOnboardingModel() OnboardingModel {
 	ti.EchoMode = textinput.EchoPassword
 	ti.EchoCharacter = '•'
 
+	// Server URL input (for local providers)
+	serverURLInput := textinput.New()
+	serverURLInput.Placeholder = "http://localhost:11434"
+	serverURLInput.CharLimit = 200
+	serverURLInput.Width = 50
+
 	// Model search input
 	searchInput := textinput.New()
 	searchInput.Placeholder = "Search models..."
@@ -82,6 +92,7 @@ func NewOnboardingModel() OnboardingModel {
 		models:           []string{},
 		filteredModels:   []string{},
 		apiKeyInput:      ti,
+		serverURLInput:   serverURLInput,
 		modelSearchInput: searchInput,
 		selectedProvider: 0, // Default to Anthropic
 	}
@@ -156,6 +167,36 @@ func (m OnboardingModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 
+		// Special handling for server URL state (local providers)
+		if m.state == OnboardingServerURL {
+			switch msg.String() {
+			case "enter":
+				url := m.serverURLInput.Value()
+				if url == "" {
+					// Use placeholder as default
+					if m.provider == "ollama" {
+						url = "http://localhost:11434"
+					} else {
+						url = "http://localhost:8080"
+					}
+				}
+				m.serverURL = url
+				m.errorMsg = ""
+				m.isTestingKey = true
+				return m, m.testServerConnection()
+			case "esc":
+				m.serverURLInput.SetValue("")
+				m.errorMsg = ""
+				m.state = OnboardingProvider
+				return m, nil
+			case "ctrl+c":
+				return m, tea.Quit
+			default:
+				m.serverURLInput, cmd = m.serverURLInput.Update(msg)
+				return m, cmd
+			}
+		}
+
 		// Special handling for model selection state - let textinput handle typing
 		if m.state == OnboardingSelectModel {
 			// Handle special keys first
@@ -179,9 +220,14 @@ func (m OnboardingModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			case "esc":
 				m.modelSearchInput.SetValue("")
-				m.apiKeyInput.SetValue("")
 				m.errorMsg = ""
-				m.state = OnboardingAPIKey
+				if config.IsLocalProvider(m.provider) {
+					m.state = OnboardingServerURL
+					m.serverURLInput.Focus()
+				} else {
+					m.apiKeyInput.SetValue("")
+					m.state = OnboardingAPIKey
+				}
 				return m, nil
 			case "ctrl+c":
 				return m, tea.Quit
@@ -239,20 +285,34 @@ func (m *OnboardingModel) handleKeyPress(keyMsg tea.KeyMsg) (tea.Model, tea.Cmd)
 				m.selectedProvider--
 			}
 		case "down", "j":
-			if m.selectedProvider < 2 { // 0=anthropic, 1=openrouter, 2=openai
+			if m.selectedProvider < 4 { // 0=anthropic, 1=openrouter, 2=openai, 3=ollama, 4=llamacpp
 				m.selectedProvider++
 			}
 		case "enter":
-			// Set provider based on selection
-			if m.selectedProvider == 0 {
+			switch m.selectedProvider {
+			case 0:
 				m.provider = "anthropic"
-			} else if m.selectedProvider == 1 {
+				m.state = OnboardingAPIKey
+				m.apiKeyInput.Focus()
+			case 1:
 				m.provider = "openrouter"
-			} else {
+				m.state = OnboardingAPIKey
+				m.apiKeyInput.Focus()
+			case 2:
 				m.provider = "openai"
+				m.state = OnboardingAPIKey
+				m.apiKeyInput.Focus()
+			case 3:
+				m.provider = "ollama"
+				m.serverURLInput.SetValue("http://localhost:11434")
+				m.state = OnboardingServerURL
+				m.serverURLInput.Focus()
+			case 4:
+				m.provider = "llamacpp"
+				m.serverURLInput.SetValue("http://localhost:8080")
+				m.state = OnboardingServerURL
+				m.serverURLInput.Focus()
 			}
-			m.state = OnboardingAPIKey
-			m.apiKeyInput.Focus()
 		case "esc":
 			m.state = OnboardingWelcome
 		case "ctrl+c":
@@ -315,11 +375,34 @@ func (m *OnboardingModel) testAPIKey() tea.Cmd {
 	}
 }
 
+func (m *OnboardingModel) testServerConnection() tea.Cmd {
+	provider := m.provider
+	serverURL := m.serverURL
+
+	return func() tea.Msg {
+		models, err := fetchLocalModels(serverURL)
+		if err != nil {
+			return KeyTestResult{
+				Success:  false,
+				Error:    err.Error(),
+				Provider: provider,
+			}
+		}
+
+		return KeyTestResult{
+			Success:  true,
+			Models:   models,
+			Provider: fmt.Sprintf("%s (%d models)", provider, len(models)),
+		}
+	}
+}
+
 func (m *OnboardingModel) saveConfig() tea.Cmd {
 	return func() tea.Msg {
 		cfg := config.Config{
 			Provider:  m.provider,
 			APIKey:    m.apiKey,
+			BaseURL:   m.serverURL,
 			Model:     m.filteredModels[m.selectedModel],
 			Onboarded: true,
 		}
@@ -341,6 +424,8 @@ func (m OnboardingModel) View() string {
 		return m.renderProvider()
 	case OnboardingAPIKey:
 		return m.renderAPIKey()
+	case OnboardingServerURL:
+		return m.renderServerURL()
 	case OnboardingSelectModel:
 		return m.renderModel()
 	case OnboardingComplete:
@@ -403,7 +488,7 @@ func (m OnboardingModel) renderProvider() string {
 		Foreground(Theme.TextMuted).
 		Render("Let's configure your AI provider")
 
-	providers := []string{"Anthropic", "OpenRouter", "OpenAI"}
+	providers := []string{"Anthropic", "OpenRouter", "OpenAI", "Ollama (local)", "llama.cpp (local)"}
 	var providerItems []string
 
 	for i, provider := range providers {
@@ -443,15 +528,25 @@ func (m OnboardingModel) renderProvider() string {
 	)
 }
 
-func (m OnboardingModel) renderAPIKey() string {
-	providerDisplay := m.provider
-	if m.provider == "anthropic" {
-		providerDisplay = "Anthropic"
-	} else if m.provider == "openrouter" {
-		providerDisplay = "OpenRouter"
-	} else if m.provider == "openai" {
-		providerDisplay = "OpenAI"
+func providerDisplayName(provider string) string {
+	switch provider {
+	case "anthropic":
+		return "Anthropic"
+	case "openrouter":
+		return "OpenRouter"
+	case "openai":
+		return "OpenAI"
+	case "ollama":
+		return "Ollama"
+	case "llamacpp":
+		return "llama.cpp"
+	default:
+		return provider
 	}
+}
+
+func (m OnboardingModel) renderAPIKey() string {
+	providerDisplay := providerDisplayName(m.provider)
 
 	title := lipgloss.NewStyle().
 		Foreground(Theme.Primary).
@@ -514,15 +609,7 @@ func (m OnboardingModel) renderModel() string {
 		return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, loading)
 	}
 
-	// Show provider name in title
-	providerDisplay := m.provider
-	if m.provider == "anthropic" {
-		providerDisplay = "Anthropic"
-	} else if m.provider == "openrouter" {
-		providerDisplay = "OpenRouter"
-	} else if m.provider == "openai" {
-		providerDisplay = "OpenAI"
-	}
+	providerDisplay := providerDisplayName(m.provider)
 
 	title := lipgloss.NewStyle().
 		Foreground(Theme.Primary).
@@ -646,6 +733,101 @@ func (m OnboardingModel) renderComplete() string {
 func (m OnboardingModel) renderMaskedKey() string {
 	// textinput already handles masking with EchoMode
 	return m.apiKeyInput.View()
+}
+
+func (m OnboardingModel) renderServerURL() string {
+	providerDisplay := providerDisplayName(m.provider)
+
+	title := lipgloss.NewStyle().
+		Foreground(Theme.Primary).
+		Bold(true).
+		Render("Enter Server URL")
+
+	providerLabel := lipgloss.NewStyle().
+		Foreground(Theme.TextMuted).
+		Render("Provider: ") +
+		lipgloss.NewStyle().
+			Foreground(Theme.Primary).
+			Bold(true).
+			Render(providerDisplay)
+
+	input := m.serverURLInput.View()
+
+	var statusLine string
+	if m.isTestingKey {
+		spinner := lipgloss.NewStyle().Foreground(Theme.Primary).Render("⠋")
+		statusLine = spinner + " " + lipgloss.NewStyle().Foreground(Theme.TextMuted).Render("Testing connection...")
+	} else if m.errorMsg != "" {
+		statusLine = lipgloss.NewStyle().Foreground(Theme.Error).Render("✗ " + m.errorMsg)
+	}
+
+	help := lipgloss.NewStyle().
+		Foreground(Theme.TextSubtle).
+		Render("Enter to test connection • ESC to go back")
+
+	content := lipgloss.JoinVertical(
+		lipgloss.Left,
+		"",
+		title,
+		"",
+		providerLabel,
+		"",
+		"",
+		input,
+	)
+
+	if statusLine != "" {
+		content = lipgloss.JoinVertical(lipgloss.Left, content, "", statusLine)
+	}
+
+	content = lipgloss.JoinVertical(lipgloss.Left, content, "", "", help)
+
+	return lipgloss.Place(m.width, m.height,
+		lipgloss.Center, lipgloss.Center,
+		content,
+	)
+}
+
+// fetchLocalModels fetches available models from a local OpenAI-compatible server (Ollama/llama.cpp)
+func fetchLocalModels(serverURL string) ([]string, error) {
+	url := strings.TrimSuffix(serverURL, "/") + "/v1/models"
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	client := &http.Client{Timeout: 5 * time.Second}
+	res, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("could not connect to server at %s: %w", serverURL, err)
+	}
+	defer res.Body.Close()
+
+	if res.StatusCode != 200 {
+		body, _ := io.ReadAll(res.Body)
+		return nil, fmt.Errorf("server returned status %d: %s", res.StatusCode, string(body))
+	}
+
+	var response struct {
+		Data []struct {
+			ID string `json:"id"`
+		} `json:"data"`
+	}
+
+	if err := json.NewDecoder(res.Body).Decode(&response); err != nil {
+		return nil, fmt.Errorf("failed to parse response: %w", err)
+	}
+
+	var modelIDs []string
+	for _, model := range response.Data {
+		modelIDs = append(modelIDs, model.ID)
+	}
+
+	if len(modelIDs) == 0 {
+		return nil, fmt.Errorf("no models found on server - make sure a model is loaded")
+	}
+
+	return modelIDs, nil
 }
 
 // fetchAnthropicModels fetches available models from Anthropic API

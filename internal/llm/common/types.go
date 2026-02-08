@@ -63,7 +63,7 @@ type Provider interface {
 
 // ProviderConfig holds configuration for creating a provider
 type ProviderConfig struct {
-	Provider string // "claude", "openai", "openrouter"
+	Provider string // "claude", "openai", "openrouter", "ollama", "llamacpp"
 	APIKey   string
 	BaseURL  string // optional override
 	Model    string // model name
