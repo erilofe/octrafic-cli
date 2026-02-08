@@ -10,8 +10,8 @@ import (
 	"github.com/charmbracelet/bubbletea"
 )
 
-func Start(baseURL string, specPath string, analysis *analyzer.Analysis, authProvider auth.AuthProvider) {
-	model := NewTestUIModel(baseURL, specPath, analysis, authProvider)
+func Start(baseURL string, specPath string, analysis *analyzer.Analysis, authProvider auth.AuthProvider, version string) {
+	model := NewTestUIModel(baseURL, specPath, analysis, authProvider, version)
 
 	p := tea.NewProgram(model)
 	if _, err := p.Run(); err != nil {
@@ -20,10 +20,10 @@ func Start(baseURL string, specPath string, analysis *analyzer.Analysis, authPro
 	}
 }
 
-func StartWithProject(baseURL string, analysis *analyzer.Analysis, project *storage.Project, authProvider auth.AuthProvider) {
+func StartWithProject(baseURL string, analysis *analyzer.Analysis, project *storage.Project, authProvider auth.AuthProvider, version string) {
 	specPath := project.SpecPath
 
-	model := NewTestUIModel(baseURL, specPath, analysis, authProvider)
+	model := NewTestUIModel(baseURL, specPath, analysis, authProvider, version)
 
 	model.currentProject = project
 

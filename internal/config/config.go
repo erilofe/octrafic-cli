@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 // Config holds the application configuration
@@ -12,8 +13,15 @@ type Config struct {
 	Provider  string `json:"provider"`
 	APIKey    string `json:"api_key,omitempty"`
 	BaseURL   string `json:"base_url,omitempty"`
-	Model     string `json:"model"`
-	Onboarded bool   `json:"onboarded"`
+	Model           string    `json:"model"`
+	Onboarded       bool      `json:"onboarded"`
+	LastUpdateCheck time.Time `json:"last_update_check,omitempty"`
+	LatestVersion   string    `json:"latest_version,omitempty"`
+}
+
+// ShouldCheckForUpdate returns true if more than 24 hours since last check
+func (c *Config) ShouldCheckForUpdate() bool {
+	return time.Since(c.LastUpdateCheck) > 24*time.Hour
 }
 
 // IsLocalProvider returns true for providers that don't require an API key

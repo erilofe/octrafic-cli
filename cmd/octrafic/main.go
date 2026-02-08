@@ -9,6 +9,7 @@ import (
 	"github.com/Octrafic/octrafic-cli/internal/core/parser"
 	"github.com/Octrafic/octrafic-cli/internal/infra/logger"
 	"github.com/Octrafic/octrafic-cli/internal/infra/storage"
+	"github.com/Octrafic/octrafic-cli/internal/updater"
 	"crypto/rand"
 	"fmt"
 	"os"
@@ -17,6 +18,12 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/joho/godotenv"
 	"github.com/spf13/cobra"
+)
+
+var (
+	version = "dev"
+	commit  = ""
+	date    = ""
 )
 
 var (
@@ -179,7 +186,7 @@ var rootCmd = &cobra.Command{
 			os.Exit(1)
 		}
 
-		cli.StartWithProject(apiURL, analysis, project, authProvider)
+		cli.StartWithProject(apiURL, analysis, project, authProvider, version)
 	},
 }
 
@@ -405,7 +412,7 @@ func promptNewProject() {
 		os.Exit(1)
 	}
 
-	cli.StartWithProject(url, analysis, project, authProvider)
+	cli.StartWithProject(url, analysis, project, authProvider, version)
 }
 
 func loadProjectByName(name string) {
@@ -483,7 +490,7 @@ func loadAndStartProject(project *storage.Project) {
 
 	fmt.Printf("🚀 Loading project: %s\n", project.Name)
 
-	cli.StartWithProject(project.BaseURL, analysis, project, authProvider)
+	cli.StartWithProject(project.BaseURL, analysis, project, authProvider, version)
 }
 
 func init() {
@@ -517,6 +524,10 @@ func main() {
 		}
 	}
 
+	if version != "dev" {
+		checkForUpdate(version)
+	}
+
 	if err := rootCmd.Execute(); err != nil {
 		logger.Error("Command execution failed", logger.Err(err))
 		os.Exit(1)
@@ -524,6 +535,26 @@ func main() {
 	if debugFilePath != "" {
 		logger.Close()
 	}
+}
+
+func checkForUpdate(currentVersion string) {
+	cfg, err := internalConfig.Load()
+	if err != nil {
+		return
+	}
+
+	if !cfg.ShouldCheckForUpdate() {
+		return
+	}
+
+	info, err := updater.CheckLatestVersion(currentVersion)
+	if err != nil {
+		return
+	}
+
+	cfg.LastUpdateCheck = time.Now()
+	cfg.LatestVersion = info.LatestVersion
+	cfg.Save()
 }
 
 func runOnboarding() bool {

@@ -1,11 +1,13 @@
 package cli
 
 import (
+	"github.com/Octrafic/octrafic-cli/internal/config"
 	"github.com/Octrafic/octrafic-cli/internal/core/analyzer"
 	"github.com/Octrafic/octrafic-cli/internal/agents"
 	"github.com/Octrafic/octrafic-cli/internal/core/auth"
 	"github.com/Octrafic/octrafic-cli/internal/infra/storage"
 	"github.com/Octrafic/octrafic-cli/internal/core/tester"
+	"github.com/Octrafic/octrafic-cli/internal/updater"
 	"fmt"
 	"strings"
 	"time"
@@ -52,6 +54,7 @@ var availableCommands = []Command{
 	{Name: "/exit", Description: "Exit the application"},
 	{Name: "/auth", Description: "Open authentication wizard"},
 	{Name: "/info", Description: "Show current project info"},
+	{Name: "/release-notes", Description: "Show latest release notes"},
 }
 
 type Test struct {
@@ -178,6 +181,10 @@ type TestUIModel struct {
 	currentTestToolName string // Name of the tool being executed (e.g., "ExecuteTestGroup")
 	currentTestToolID   string // ID of the tool_use for FunctionResponse
 
+	// Version
+	currentVersion string
+	latestVersion  string
+
 	// Styles
 	titleStyle   lipgloss.Style
 	methodStyles map[string]lipgloss.Style
@@ -193,7 +200,7 @@ type TestUIModel struct {
 	height int
 }
 
-func NewTestUIModel(baseURL string, specPath string, analysis *analyzer.Analysis, authProvider auth.AuthProvider) *TestUIModel {
+func NewTestUIModel(baseURL string, specPath string, analysis *analyzer.Analysis, authProvider auth.AuthProvider, version string) *TestUIModel {
 	// Textarea
 	ta := textarea.New()
 	ta.Placeholder = "Chat with the testing agent..."
@@ -252,6 +259,11 @@ func NewTestUIModel(baseURL string, specPath string, analysis *analyzer.Analysis
 		userStyle:           lipgloss.NewStyle().Foreground(Theme.Primary).Bold(true),
 		agentStyle:          lipgloss.NewStyle().Foreground(Theme.Primary),
 		toolStyle:           lipgloss.NewStyle().Foreground(Theme.Warning),
+	}
+
+	model.currentVersion = version
+	if cfg, err := config.Load(); err == nil && cfg.LatestVersion != "" && updater.IsNewer(cfg.LatestVersion, version) {
+		model.latestVersion = cfg.LatestVersion
 	}
 
 	// Welcome message with header style
@@ -450,7 +462,13 @@ func (m TestUIModel) View() string {
 		tokensStyle := lipgloss.NewStyle().Foreground(Theme.TextMuted)
 		tokenDisplay := tokensStyle.Render(fmt.Sprintf(" • ↑%d ↓%d", m.inputTokens, m.outputTokens))
 
-		s.WriteString(icon + " " + statusMsg + tokenDisplay + "\n")
+		// Update indicator
+		updateDisplay := ""
+		if m.latestVersion != "" {
+			updateDisplay = lipgloss.NewStyle().Foreground(Theme.Warning).Render(fmt.Sprintf(" • v%s available", m.latestVersion))
+		}
+
+		s.WriteString(icon + " " + statusMsg + tokenDisplay + updateDisplay + "\n")
 
 		// Input AFTER status line
 		s.WriteString(m.textarea.View() + "\n")

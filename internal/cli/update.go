@@ -5,6 +5,7 @@ import (
 	"github.com/Octrafic/octrafic-cli/internal/core/auth"
 	"github.com/Octrafic/octrafic-cli/internal/infra/logger"
 	"github.com/Octrafic/octrafic-cli/internal/infra/storage"
+	"github.com/Octrafic/octrafic-cli/internal/updater"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -15,6 +16,12 @@ import (
 	"go.uber.org/zap"
 	"github.com/charmbracelet/bubbles/spinner"
 )
+
+type releaseNotesMsg struct {
+	notes string
+	url   string
+	err   error
+}
 
 // Update handles messages and updates the model
 func (m TestUIModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -105,6 +112,22 @@ func (m TestUIModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			m.agentState = StateIdle
 		}
+
+	case releaseNotesMsg:
+		if msg.err != nil {
+			m.addMessage(m.errorStyle.Render("Failed to fetch release notes: " + msg.err.Error()))
+			m.addMessage("")
+		} else {
+			m.addMessage(renderMarkdown(msg.notes))
+			if msg.url != "" {
+				m.addMessage("")
+				m.addMessage(lipgloss.NewStyle().Foreground(Theme.Cyan).Render(msg.url))
+			}
+			m.addMessage("")
+		}
+		m.lastMessageRole = "assistant"
+		m.updateViewport()
+		return m, nil
 
 	case clearHintTimeoutMsg:
 		if m.showClearHint && time.Since(m.lastEscPress) >= 700*time.Millisecond {
@@ -493,6 +516,14 @@ func handleSlashCommands(m *TestUIModel, userInput string) (*TestUIModel, tea.Cm
 		m.wizardState = NewAuthWizard()
 		m.agentState = StateWizard
 		return m, nil, true
+
+	case userInput == "/release-notes":
+		m.addAgentMessage(m.subtleStyle.Render("Fetching release notes..."))
+		m.addMessage("")
+		return m, func() tea.Msg {
+			notes, url, err := updater.FetchReleaseNotes("")
+			return releaseNotesMsg{notes: notes, url: url, err: err}
+		}, true
 
 	case userInput == "/info":
 		if m.currentProject == nil {
